@@ -16,19 +16,25 @@ read_config <- function(file) {
 create_cov <- function(x, ids=NULL) {
   # Extract the relevant loadings and ivol
   if (is.null(ids)) {
-    load <- x$fct_load 
+    load <- x$fct_load
     ivol <- x$ivol_vec
   } else {
-    load <- x$fct_load[as.character(ids),] 
+    # drop=FALSE: with a reduced-scale stock universe, some dates have exactly
+    # one investable stock; without drop=FALSE, R silently collapses a
+    # single-row selection to a plain vector, and diag() below would then
+    # misinterpret a length-1 vector as "build an NxN identity matrix" instead
+    # of "build the 1x1 diagonal matrix with this value" - a classic R gotcha
+    # that's dormant at the original ~5,000-stock scale but surfaces here.
+    load <- x$fct_load[as.character(ids), , drop = FALSE]
     ivol <- x$ivol_vec[as.character(ids)]
   }
-  # Create the covariance matrix
-  (load %*% x$fct_cov %*% t(load) + diag(ivol))
+  # Create the covariance matrix (nrow= guards the same length-1 diag() gotcha)
+  (load %*% x$fct_cov %*% t(load) + diag(ivol, nrow = length(ivol)))
 }
 
 # Create lambda ---------------
 create_lambda <- function(x, ids) {
-  x[ids] |> diag()
+  x[ids] |> (\(v) diag(v, nrow = length(v)))()
 }
 
 # Compute expected risk ---------------
@@ -88,11 +94,11 @@ sigma_gam_adj <- function(sigma_gam, g, cov_type) {
     return(sigma_gam*g)
   }
   if (cov_type == "cov_add") {
-    return(sigma_gam+diag(diag(sigma_gam)*g))
+    return(sigma_gam+diag(diag(sigma_gam)*g, nrow = nrow(sigma_gam)))
   }
   if (cov_type == "cor_shrink") {
     stopifnot(abs(g) <= 1)
-    sd_vec <- diag(sqrt(diag(sigma_gam)))
+    sd_vec <- diag(sqrt(diag(sigma_gam)), nrow = nrow(sigma_gam))
     sd_vec_inv <- solve(sd_vec)
     cor_mat <- sd_vec_inv %*% sigma_gam %*% sd_vec_inv
     cor_mat_adj <- cor_mat * (1-g) + diag(nrow(cor_mat))*g

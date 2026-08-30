@@ -16,7 +16,9 @@ cluster_ranks <- clusters %>% lapply(function(cl) {
 cluster_data_m <- cluster_data_m[, .(id, eom, "eom_ret"=ceiling_date(eom+1, unit = "month")-1, size_grp, ff12)] %>% cbind(cluster_ranks)
 # Add Industry/market dummies
 if (settings$cov_set$industries) {
-  # Create industry dummies
+  # Create industry dummies (full, un-folded FF12 set - see note below on the
+  # "Utils" zero-representation window, handled downstream per-calc-date
+  # rather than by altering the industry set itself).
   industries <- sort(unique(cluster_data_m$ff12))
   for (ind in industries) {
     cluster_data_m[, (ind) := as.integer(ff12==ind)]
@@ -62,9 +64,26 @@ factor_cov_est <- as.character(calc_dates) %>% map(.progress = T, function(d){
   cov_data <- fct_ret[date >= first_obs & date <= as.Date(d)]
   t <- nrow(cov_data)
   if (t < settings$cov_set$obs-30) warning("INSUFFICIENT NUMBER OF OBSERVATIONS!!") # Only an issue with the first calc_date
-  cov_est <- cov_data %>% select(-date) %>% cov.wt(wt = tail(w_cor, t), cor=T, center=T, method = "unbiased")
+  cov_data_x <- cov_data %>% select(-date)
+  # With industries=T, the "Utils" FF12 industry has zero stocks on every
+  # trading day from 1954-12-01 through 1959-05-29 (confirmed empirically: no
+  # other industry ever hits zero across the full 1954-2021 series). A
+  # zero-representation industry on any single day leaves that day's
+  # cross-sectional factor regression singular for that term - lm() itself
+  # handles this gracefully (NA coefficient for the aliased term, everything
+  # else fits normally), but that NA then breaks cov.wt() for any calc_date
+  # whose 10-year window overlaps that gap. Dropping the affected factor(s)
+  # per calc_date (rather than folding "Utils" into "Other" for the entire
+  # 68-year sample, tried first) keeps the true, un-folded industry structure
+  # for the ~50 years of calc_dates whose windows don't overlap the gap -
+  # which is all of them from ~1969 onward, covering the entire analysis
+  # period (1971+ hp validation, 1981+ OOS) - at the cost of a narrower
+  # factor set for the handful of early calc_dates that do overlap it.
+  na_cols <- names(cov_data_x)[sapply(cov_data_x, function(x) any(is.na(x)))]
+  if (length(na_cols) > 0) cov_data_x <- cov_data_x %>% select(-all_of(na_cols))
+  cov_est <- cov_data_x %>% cov.wt(wt = tail(w_cor, t), cor=T, center=T, method = "unbiased")
   cor_est <- cov_est$cor
-  var_est <- cov_data %>% select(-date) %>% cov.wt(wt = tail(w_var, t), cor=F, center=T, method = "unbiased") # inefficient solution but super fast with few factors
+  var_est <- cov_data_x %>% cov.wt(wt = tail(w_var, t), cor=F, center=T, method = "unbiased") # inefficient solution but super fast with few factors
   sd_diag <- diag(sqrt(diag(var_est$cov)))
   # Prepare cov
   cov_est <- sd_diag %*% cor_est %*% sd_diag

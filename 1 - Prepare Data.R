@@ -46,10 +46,21 @@ data_ret_ld1 <- data_ret_ld1[, .(id, eom=eom+1+months(1)-1, "tr_ld0" = tr_ld1)][
 rm(monthly)
 
 # Prepare data -----------------------------------
-chars <- fread(paste0("Data/usa.csv"), 
-               select = unique(c("id", "eom", "sic", "ff49", "size_grp", "me", "crsp_exchcd", "rvol_252d", "dolvol_126d", features)),  
+chars <- fread(paste0("Data/usa.csv"),
+               # "ff49" dropped: not present in the WRDS contrib_global_factor.ctff_chars pull used for
+               # this local replication, and not referenced anywhere downstream of this select().
+               select = unique(c("id", "eom", "sic", "size_grp", "me", "crsp_exchcd", "rvol_252d", "dolvol_126d", features)),
                colClasses = c("eom" = "character", "sic"="character"))
 chars <- chars[id <= 99999] # Only CRSP observations
+# Fix the run_sub stock sample here, before any screens that differ between
+# the model-fitting pass (nyse_stocks=F) and the portfolio-construction pass
+# (nyse_stocks=T). Otherwise the two passes would sample 2,500 stocks from
+# differently-sized pools and end up with different id sets even with the
+# same seed, breaking the later id-keyed merge of model predictions.
+if (run_sub) {
+  set.seed(settings$seed_no)
+  run_sub_ids <- sample(unique(chars$id), 8000, replace = FALSE)
+}
 chars[, eom := eom %>% lubridate::fast_strptime(format = "%Y%m%d") %>% as.Date()]
 # Add useful columns ------
 chars[, dolvol := dolvol_126d] 
@@ -93,8 +104,7 @@ chars <- chars[feat_available >= min_feat]
 print(paste0("   In total, the final dataset has ", round( (nrow(chars) / n_start)*100, 2), "% of the observations and ", round((sum(chars$me) / me_start)*100, 2), "% of the market cap in the post ", settings$screens$start, " data"))
 # Screen out if running subset --------------------------------
 if (run_sub) {
-  set.seed(settings$seed)
-  chars <- chars[id %in% sample(unique(chars$id), 2500, replace = F)] 
+  chars <- chars[id %in% run_sub_ids]  # fixed sample drawn earlier, before any settings-dependent screens
 }
 # Feature standardization -----------------------------
 if (settings$feat_prank) {

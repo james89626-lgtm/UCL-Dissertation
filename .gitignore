@@ -9,3 +9,6 @@ slurm_output/
 simulations/results/
 simulations/Depreceated code/
 scribbles/
+# local artefacts
+Rplots.pdf
+.Rproj.user/

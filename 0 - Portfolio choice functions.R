@@ -216,9 +216,17 @@ static_val_fun <- function(data, dates, cov_list, lambda_list, wealth, cov_type,
     # If given HPs use those
     if (!is.null(hps)) {
       hp <- hps[year(eom_ret)<year(as.Date(d))][eom_ret == max(eom_ret)]
+      # Fallback for a reduced-scale universe where the strict "one full prior
+      # year" requirement can leave no candidate yet (or rank==1 ties can
+      # leave a December with no unique winner): relax to the most recent
+      # available entry, then to the first HP grid row as a last resort,
+      # rather than crashing with an empty (g,u,k).
+      if (nrow(hp) == 0) hp <- hps[eom_ret == max(eom_ret)]
+      if (nrow(hp) == 0) hp <- hps[1]
+      hp <- hp[1]
       g <- hp$g; u <- hp$u; k <- hp$k
     }
-    # Build inputs 
+    # Build inputs
     wealth_t <- wealth[eom == as.Date(d)]$wealth
     ids <- static_weights[eom==as.Date(d)]$id
     sigma_gam <- (cov_list[[d]] |> create_cov(ids = as.character(ids)))*gamma_rel 
@@ -749,6 +757,9 @@ mp_val_fun <- function(data, dates, cov_list, lambda_list, wealth, risk_free, mu
     # If given HPs use those
     if (!is.null(hps)) {
       hp <- hps[year(eom_ret)<year(as.Date(d))][eom_ret == max(eom_ret)]
+      if (nrow(hp) == 0) hp <- hps[eom_ret == max(eom_ret)]
+      if (nrow(hp) == 0) hp <- hps[1]
+      hp <- hp[1]
       g <- hp$g; u <- hp$u; k <- hp$k
     }
     # Inputs
