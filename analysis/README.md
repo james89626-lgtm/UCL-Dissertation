@@ -1,7 +1,7 @@
 # Analysis scripts
 
 Supporting scripts for "Can Machine Learning Beat the Market After Considering
-Trading Costs". Each produces a figure that appears in the dissertation text.
+Trading Costs?". Each produces a figure that appears in the dissertation text.
 Written against the outputs of the replication pipeline in this project, which
 builds on the replication code released by Jensen, Kelly, Malamud and Pedersen
 (2026).
